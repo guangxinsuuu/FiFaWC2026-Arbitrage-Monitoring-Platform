@@ -36,31 +36,6 @@ It is closer to a market monitoring console than a gambling tips site.
 - **Information Gap**: bookmaker divergence and price spread ranking
 - **Multi-Market Scanner**: totals, spreads, and Asian handicap signal coverage
 
-### Execution Context
-
-Each signal can include:
-
-- Best available odds by leg
-- Bookmaker source per leg
-- Suggested stake allocation
-- Expected profit
-- Net result after simplified commission model
-- Slippage buffer
-- Average retained time
-- Median retained time
-- Current live duration
-- Warning flags for suspicious or fragile opportunities
-
-### Market Coverage
-
-- H2H / 1X2
-- Totals
-- Spreads
-- Asian Handicap
-- Totals Middle
-
-Optional markets such as BTTS, Double Chance, and Draw No Bet are represented in the UI as disabled modules when they are not requested from the current odds provider.
-
 ## Technology
 
 The stack is intentionally simple, deployable, and infrastructure-friendly:
@@ -150,6 +125,7 @@ The repository intentionally excludes runtime data:
 - local logs and deployment keys
 
 Use `.env.example` and `deploy/lightsail/.env.lightsail.example` as templates.
+
 
 ## Community Support
 
