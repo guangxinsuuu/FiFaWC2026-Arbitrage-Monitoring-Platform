@@ -1,0 +1,2031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WC2026 Arbitrage Console</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<style>
+  html, body { max-width: 100%; overflow-x: hidden; }
+  [x-cloak] { display: none !important; }
+  .pulse-green { animation: pulseGreen 1.5s ease-in-out infinite; }
+  @keyframes pulseGreen {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+  }
+  .odds-best { background: rgba(34,197,94,0.15); font-weight: 700; color: #22c55e; }
+  .wc26-mark {
+    width: 34px;
+    height: 42px;
+    border: 1px solid rgba(148,163,184,0.65);
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    background:
+      linear-gradient(145deg, rgba(59,130,246,0.38), rgba(15,23,42,0.9)),
+      radial-gradient(circle at 70% 20%, rgba(34,197,94,0.45), transparent 34%);
+    color: #f8fafc;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+    line-height: 1;
+  }
+  .wc26-mark span:first-child { font-size: 11px; letter-spacing: 0; }
+  .wc26-mark span:last-child { font-size: 16px; font-weight: 900; letter-spacing: 0; }
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: #1e293b; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+</style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-mono" x-data="dashboard()" x-init="init()">
+
+<!-- 顶部状态栏 -->
+<div class="bg-slate-800 border-b border-slate-700 px-3 py-3 md:px-4 md:py-2 flex flex-col md:flex-row md:items-center md:justify-between gap-3 overflow-hidden">
+  <div class="flex items-start gap-3 w-full md:w-auto min-w-0">
+    <div class="wc26-mark" aria-label="WC2026 mark">
+      <div class="text-center">
+        <span>WC</span><br>
+        <span>26</span>
+      </div>
+    </div>
+    <div class="min-w-0 flex-1">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+        <span class="text-white font-bold text-base sm:text-lg leading-tight break-words" x-text="t('appTitle')"></span>
+        <span class="text-slate-400 text-xs sm:text-sm" x-text="currentRegionLabel + ' market'"></span>
+      </div>
+      <div class="text-[11px] text-blue-300 tracking-normal leading-snug" x-text="t('slogan')"></div>
+    </div>
+  </div>
+  <div class="flex flex-wrap items-center gap-2 text-xs sm:text-sm w-full md:w-auto">
+    <a href="/about" target="_blank" rel="noopener noreferrer"
+       class="px-3 py-1.5 rounded border border-slate-600 bg-slate-900/40 text-slate-300 hover:text-white hover:border-blue-400 transition">
+      About
+    </a>
+    <button @click="openDonation()"
+            class="px-3 py-1.5 rounded border border-rose-400/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 hover:text-white transition">
+      <span x-text="t('supportButton')"></span>
+    </button>
+    <div class="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded p-1">
+      <button @click="lang='en'" class="px-2 py-1 rounded text-xs" :class="lang === 'en' ? 'bg-blue-500 text-white' : 'text-slate-400'">EN</button>
+      <button @click="lang='zh'" class="px-2 py-1 rounded text-xs" :class="lang === 'zh' ? 'bg-blue-500 text-white' : 'text-slate-400'">中文</button>
+    </div>
+    <div class="flex items-center gap-2">
+      <div :class="connected ? 'bg-green-500 pulse-green' : 'bg-red-500'" class="w-2 h-2 rounded-full"></div>
+      <span x-text="connected ? t('live') : t('offline')" :class="connected ? 'text-green-400' : 'text-red-400'"></span>
+    </div>
+    <div class="basis-full sm:basis-auto text-slate-400 text-xs sm:text-sm"><span x-text="t('lastUpdate')"></span>: <span class="text-white" x-text="lastUpdate || '--:--:--'"></span></div>
+    <div class="text-slate-400 text-xs sm:text-sm"><span x-text="t('refreshRate')"></span>: <span class="text-cyan-300" x-text="formatDuration(refreshRateSeconds * 1000)"></span></div>
+    <div class="text-slate-400 text-xs sm:text-sm"><span x-text="t('events')"></span>: <span class="text-blue-400" x-text="totalEvents"></span></div>
+  </div>
+</div>
+
+<!-- 主体内容 -->
+<div class="p-3 md:p-4 grid grid-cols-12 gap-3 md:gap-4 overflow-hidden">
+  <div class="col-span-12 bg-slate-800 rounded-lg p-2 border border-slate-700 overflow-hidden">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+      <div class="flex items-center gap-2 overflow-x-auto scrollbar-thin pb-1">
+        <span class="text-xs text-slate-400 px-2 shrink-0" x-text="t('regionTabs')"></span>
+        <template x-for="r in regionTabs" :key="r.key">
+          <button class="px-3 py-2 rounded border text-sm transition shrink-0 min-w-[74px] sm:min-w-0"
+                  :class="selectedRegion === r.key ? 'bg-blue-500/20 border-blue-400 text-white' : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:text-white'"
+                  @click="selectRegion(r.key)">
+            <span class="font-bold" x-text="r.key.toUpperCase()"></span>
+            <span class="block sm:inline text-[11px] sm:ml-1" x-text="regionSummary(r.key)"></span>
+          </button>
+        </template>
+      </div>
+      <div class="hidden md:block text-[11px] text-slate-500" x-text="t('regionIsolation')"></div>
+    </div>
+  </div>
+
+  <div class="col-span-12 rounded border border-slate-700 bg-slate-950/55 px-3 py-2 text-[11px] text-slate-400 leading-relaxed">
+    <span class="text-slate-300 font-bold" x-text="t('disclaimerTitle')"></span>
+    <span x-text="' ' + t('disclaimer')"></span>
+  </div>
+
+  <!-- 左栏：策略扫描导航 + 机会 -->
+  <div class="col-span-12 lg:col-span-3 order-1 space-y-3">
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-blue-300" x-text="t('strategyScanner')"></h2>
+        <span class="text-[11px] text-slate-400" x-text="t('strategyFirst')"></span>
+      </div>
+      <div class="space-y-1.5">
+        <template x-for="s in strategyMenu" :key="s.key">
+          <button class="w-full text-left rounded border px-3 py-2 transition"
+                  :class="s.disabled ? 'bg-slate-900/40 border-slate-800 opacity-60 cursor-not-allowed' : (selectedStrategy === s.key ? 'bg-blue-500/15 border-blue-400' : 'bg-slate-700/35 border-slate-700 hover:bg-slate-700')"
+                  :disabled="s.disabled"
+                  @click="selectStrategy(s.key)">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <div class="text-sm text-white" x-text="strategyName(s.key)"></div>
+                <div class="text-[11px] text-slate-400" x-text="strategyDesc(s.key)"></div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs font-bold" :class="s.disabled ? 'text-slate-600' : (strategyCount(s.key) > 0 ? 'text-green-300' : 'text-slate-500')" x-text="s.disabled ? t('comingSoon') : (strategyCount(s.key) + ' ' + t('signalsMini'))"></div>
+                <div class="text-[10px]" :class="s.enabled ? 'text-green-400' : 'text-yellow-400'" x-text="s.enabled ? t('active') : t('planned')"></div>
+              </div>
+            </div>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-slate-300" x-text="t('marketsCovered')"></h2>
+        <span class="text-[11px] text-slate-500" x-text="t('secondaryInfo')"></span>
+      </div>
+      <div class="space-y-1.5">
+        <template x-for="m in marketMenu" :key="'covered-' + m.key">
+          <div class="flex items-center justify-between rounded bg-slate-700/35 px-3 py-2">
+            <div>
+              <div class="text-xs text-white" x-text="marketName(m.key)"></div>
+              <div class="text-[11px] text-slate-400" x-text="marketDesc(m.key)"></div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs" :class="m.disabled ? 'text-slate-500' : 'text-green-300'" x-text="m.disabled ? t('disabled') : t('enabled')"></div>
+              <div class="text-[10px]" :class="m.disabled ? 'text-slate-600' : 'text-slate-400'" x-text="m.disabled ? t('notRequested') : marketDataCount(m.key) + ' ' + t('dataMini')"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 中栏：综合信息 + 赔率详情 + 投注计算器 -->
+  <div class="col-span-12 lg:col-span-6 order-3 lg:order-2 space-y-4">
+
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-blue-300" x-text="t('overview')"></h2>
+        <div class="text-[11px] text-slate-400" x-text="t('overviewHint')"></div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+        <div class="bg-slate-700/40 rounded p-3">
+          <div class="text-[11px] text-slate-400" x-text="t('surebets')"></div>
+          <div class="text-xl font-bold text-green-300" x-text="strategyCount('surebet')"></div>
+        </div>
+        <div class="bg-slate-700/40 rounded p-3">
+          <div class="text-[11px] text-slate-400" x-text="t('nearArb')"></div>
+          <div class="text-xl font-bold text-yellow-300" x-text="strategyCount('near')"></div>
+        </div>
+        <div class="bg-slate-700/40 rounded p-3">
+          <div class="text-[11px] text-slate-400" x-text="t('middleShort')"></div>
+          <div class="text-xl font-bold text-fuchsia-300" x-text="strategyCount('middle')"></div>
+        </div>
+        <div class="bg-slate-700/40 rounded p-3">
+          <div class="text-[11px] text-slate-400" x-text="t('infoGapShort')"></div>
+          <div class="text-xl font-bold text-amber-300" x-text="strategyCount('info_gap')"></div>
+        </div>
+        <div class="bg-slate-700/40 rounded p-3">
+          <div class="text-[11px] text-slate-400" x-text="t('multiMarketShort')"></div>
+          <div class="text-xl font-bold text-cyan-300" x-text="strategyCount('multi_market')"></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded border border-slate-700 bg-slate-900/40 p-3">
+          <div class="text-xs text-slate-400 mb-2" x-text="t('marketCoverage')"></div>
+          <div class="grid grid-cols-2 gap-1.5">
+            <template x-for="m in marketMenu" :key="'coverage-' + m.key">
+              <div class="flex items-center justify-between rounded bg-slate-700/40 px-2 py-1.5">
+                <span class="text-xs text-slate-200" x-text="marketName(m.key)"></span>
+                <span class="text-xs font-bold" :class="marketDataCount(m.key) > 0 ? 'text-green-300' : 'text-slate-500'" x-text="marketDataCount(m.key)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div class="rounded border border-slate-700 bg-slate-900/40 p-3">
+          <div class="text-xs text-slate-400 mb-2" x-text="t('topSignals')"></div>
+          <template x-for="sig in topSignals" :key="sig.type + sig.match">
+            <div class="flex items-center justify-between gap-2 border-b border-slate-700/60 py-1.5 last:border-b-0">
+              <div>
+                <div class="text-xs text-white" x-text="sig.match"></div>
+                <div class="text-[11px] text-slate-400" x-text="sig.label"></div>
+              </div>
+              <div class="text-xs font-bold" :class="sig.color" x-text="sig.value"></div>
+            </div>
+          </template>
+          <div x-show="topSignals.length === 0" class="text-xs text-slate-500 py-4 text-center" x-text="t('noSignals')"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 产品分析层 -->
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div>
+          <h2 class="font-bold text-cyan-300" x-text="t('productAnalytics')"></h2>
+          <div class="text-[11px] text-slate-400" x-text="t('analyticsHint')"></div>
+        </div>
+        <div class="flex rounded border border-slate-700 bg-slate-900/60 p-1">
+          <template x-for="tab in analyticsTabs" :key="tab.key">
+            <button class="px-3 py-1 rounded text-xs transition"
+                    :class="analyticsScope === tab.key ? 'bg-cyan-500/20 text-cyan-100' : 'text-slate-400 hover:text-white'"
+                    @click="analyticsScope = tab.key"
+                    x-text="t(tab.labelKey)"></button>
+          </template>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div class="rounded border border-slate-700 bg-slate-900/40 p-3 md:col-span-2">
+          <div class="mb-2 flex items-center justify-between">
+            <div class="text-xs font-bold text-green-300">Surebet</div>
+            <div class="text-[11px] text-slate-500" x-text="analyticsTotal('surebet') + ' ' + t('signalsMini')"></div>
+          </div>
+          <div class="space-y-2">
+            <template x-for="row in analyticsSurebetRows" :key="row.key">
+              <div>
+                <div class="mb-1 flex items-center justify-between text-xs">
+                  <span class="text-slate-200" x-text="row.label"></span>
+                  <span class="text-slate-400" x-text="row.percent.toFixed(0) + '%'"></span>
+                </div>
+                <div class="h-2 rounded bg-slate-700 overflow-hidden">
+                  <div class="h-full rounded bg-gradient-to-r from-green-400 to-cyan-300" :style="`width: ${Math.max(row.percent, row.count ? 4 : 0)}%`"></div>
+                </div>
+                <div class="mt-0.5 text-[10px] text-slate-500" x-text="row.count + ' ' + t('signalsMini')"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="rounded border border-slate-700 bg-slate-900/40 p-3">
+          <div class="grid grid-cols-2 gap-2">
+            <div class="rounded bg-slate-800/80 p-2">
+              <div class="text-[11px] text-slate-400">Middle</div>
+              <div class="text-xl font-bold text-fuchsia-300" x-text="analyticsTotal('middle')"></div>
+              <div class="text-[10px] text-slate-500" x-text="analyticsMiddleShare.toFixed(0) + '%'"></div>
+            </div>
+            <div class="rounded bg-slate-800/80 p-2">
+              <div class="text-[11px] text-slate-400">Gap</div>
+              <div class="text-xl font-bold text-amber-300" x-text="analyticsGapPerDay + '/day'"></div>
+              <div class="text-[10px] text-slate-500" x-text="analyticsTotal('gap') + ' ' + t('signalsMini')"></div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="mb-2 text-xs text-slate-400" x-text="t('moduleValue')"></div>
+            <template x-for="row in analyticsValueRows" :key="row.key">
+              <div class="mb-1.5 flex items-center justify-between rounded bg-slate-800/70 px-2 py-1.5">
+                <span class="text-xs text-slate-200" x-text="row.label"></span>
+                <span class="text-xs font-bold" :class="row.count > 0 ? 'text-cyan-300' : 'text-slate-500'" x-text="row.count"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 rounded border border-slate-700 bg-slate-950/35 px-3 py-2 text-[11px] text-slate-500" x-text="analyticsFootnote"></div>
+    </div>
+
+    <!-- 赔率对比表 -->
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-blue-400" x-text="t('oddsDetail')"></h2>
+        <div class="flex gap-2">
+          <input type="text" :placeholder="t('searchTeams')" x-model="searchQuery"
+                 class="bg-slate-700 text-sm px-2 py-1 rounded border border-slate-600 text-white w-36 focus:outline-none focus:border-blue-400">
+          <select x-model="oddsFilter" class="bg-slate-700 text-sm px-2 py-1 rounded border border-slate-600 text-white focus:outline-none">
+            <option value="all" x-text="t('all')"></option>
+            <option value="today" x-text="t('today')"></option>
+            <option value="arb" x-text="t('withArb')"></option>
+          </select>
+        </div>
+      </div>
+
+      <div x-show="!selectedEvent" class="text-slate-500 text-sm text-center py-6">
+        <span x-text="t('selectHint')"></span>
+      </div>
+
+      <div x-show="selectedEvent" x-cloak>
+        <div class="mb-2">
+          <div class="text-white font-bold text-base" x-text="selectedEvent?.match"></div>
+          <div class="text-slate-400 text-xs" x-text="selectedEvent ? formatTime(selectedEvent.commence) : ''"></div>
+        </div>
+
+        <div x-show="eventGap" class="mb-3 rounded border border-amber-500/30 bg-amber-500/10 p-2 text-xs">
+          <div class="flex items-center justify-between text-amber-300">
+            <span x-text="t('gapScore') + ': ' + eventGap.score.toFixed(2)"></span>
+            <span x-text="t('avgGap') + ': ' + eventGap.avg_gap_pct.toFixed(2) + '%' "></span>
+          </div>
+          <div class="mt-1 text-slate-300">
+            <span x-text="sideLabel('home') + ': ' + eventGap.home_gap_pct.toFixed(2) + '% | ' + sideLabel('draw') + ': ' + eventGap.draw_gap_pct.toFixed(2) + '% | ' + sideLabel('away') + ': ' + eventGap.away_gap_pct.toFixed(2) + '%' "></span>
+          </div>
+          <div class="mt-1 text-amber-200"
+               x-text="t('orderHint') + ': ' + sideLabel(eventGap.order_hint?.[0]?.side) + ' @ ' + (eventGap.order_hint?.[0]?.bookmaker || '-')">
+          </div>
+        </div>
+
+        <div x-show="selectedEventDims.length > 0" class="mb-3 rounded border border-cyan-500/30 bg-cyan-500/10 p-2 text-xs">
+          <div class="text-cyan-300 mb-1" x-text="t('eventMarketOps')"></div>
+          <template x-for="dim in selectedEventDims" :key="dim.dimension + dim.line">
+            <div class="text-slate-200 py-0.5">
+              <span x-text="marketLabel(dim) + (dim.line ? ' line ' + dim.line : '')"></span>
+              <span class="text-cyan-200" x-text="' | margin ' + dim.margin.toFixed(4)"></span>
+              <span class="text-green-300" x-text="' | ' + t('profit') + ' ' + dim.profit_pct.toFixed(3) + '%' "></span>
+            </div>
+          </template>
+        </div>
+
+        <div x-show="selectedMarket !== 'h2h'" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-slate-400 border-b border-slate-700">
+                <template x-for="col in marketDetailColumns" :key="col.key">
+                  <th class="py-2 px-3" :class="col.align === 'left' ? 'text-left' : 'text-center'" x-text="col.label"></th>
+                </template>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="row in marketDetailRows" :key="row.key">
+                <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+                  <template x-for="col in marketDetailColumns" :key="row.key + col.key">
+                    <td class="py-2 px-3" :class="col.align === 'left' ? 'text-left text-slate-300' : 'text-center text-slate-200'" x-text="row[col.key] ?? '-'"></td>
+                  </template>
+                </tr>
+              </template>
+              <tr x-show="marketDetailRows.length === 0">
+                <td class="py-6 text-center text-slate-500" :colspan="marketDetailColumns.length" x-text="t('noMarketRows')"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div x-show="selectedMarket === 'h2h'" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-slate-400 border-b border-slate-700">
+                <th class="text-left py-2 pr-4" x-text="t('bookmaker')"></th>
+                <th class="text-center py-2 px-3" x-text="sideLabel('home')"></th>
+                <th class="text-center py-2 px-3" x-text="sideLabel('draw')"></th>
+                <th class="text-center py-2 px-3" x-text="sideLabel('away')"></th>
+                <th class="text-center py-2 px-3">margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="row in oddsTableRows" :key="row.bookmaker">
+                <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+                  <td class="py-2 pr-4 text-slate-300" x-text="row.bookmaker"></td>
+                  <td class="text-center py-2 px-3 rounded-l"
+                      :class="row.homeBest ? 'odds-best' : 'text-slate-300'"
+                      x-text="row.home || '-'"></td>
+                  <td class="text-center py-2 px-3"
+                      :class="row.drawBest ? 'odds-best' : 'text-slate-300'"
+                      x-text="row.draw || '-'"></td>
+                  <td class="text-center py-2 px-3"
+                      :class="row.awayBest ? 'odds-best' : 'text-slate-300'"
+                      x-text="row.away || '-'"></td>
+                  <td class="text-center py-2 px-3 text-slate-500 text-xs" x-text="row.margin"></td>
+                </tr>
+              </template>
+              <!-- 最优赔率汇总行 -->
+              <tr class="border-t-2 border-green-500/50 bg-green-500/10">
+                <td class="py-2 pr-4 text-green-400 font-bold" x-text="t('bestCombo')"></td>
+                <td class="text-center py-2 px-3 text-green-400 font-bold" x-text="bestOdds.home?.toFixed(2) || '-'"></td>
+                <td class="text-center py-2 px-3 text-green-400 font-bold" x-text="bestOdds.draw?.toFixed(2) || '-'"></td>
+                <td class="text-center py-2 px-3 text-green-400 font-bold" x-text="bestOdds.away?.toFixed(2) || '-'"></td>
+                <td class="text-center py-2 px-3 font-bold"
+                    :class="bestMargin < 1 ? 'text-green-400' : 'text-slate-400'"
+                    x-text="bestMargin.toFixed(4)"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div x-show="bestMargin < 1" class="mt-2 text-center">
+          <span class="text-green-400 text-xs font-bold bg-green-500/20 px-3 py-1 rounded-full">
+            <span x-text="t('arbWindow') + ': '"></span><span x-text="((1/bestMargin - 1)*100).toFixed(3) + '%'"></span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 投注计算器 -->
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <h2 class="font-bold text-purple-400 mb-3" x-text="t('stakeCalc')"></h2>
+
+      <div class="flex items-center gap-4 mb-4">
+        <div>
+          <label class="text-slate-400 text-xs" x-text="t('bankroll') + ' (' + currencySymbol + ')'"></label>
+          <input type="number" x-model.number="totalStake" min="10" step="10"
+                 @input="recalcBets()"
+                 class="bg-slate-700 text-white px-3 py-2 rounded border border-slate-600 w-32 block mt-1 focus:outline-none focus:border-purple-400">
+        </div>
+        <div x-show="calcResult" x-cloak class="flex-1">
+          <div class="text-xs text-slate-400" x-text="t('guaranteedReturn')"></div>
+          <div class="text-xl font-bold text-green-400" x-text="calcResult ? money(calcResult.guaranteed) : '--'"></div>
+          <div class="text-xs text-green-300" x-text="calcResult ? t('net') + ': ' + money(calcResult.net) + '  ' + t('profit') + ': ' + calcResult.pct.toFixed(3) + '%' : ''"></div>
+        </div>
+      </div>
+
+      <div x-show="calcResult" x-cloak class="space-y-2">
+        <div class="grid grid-cols-4 text-xs text-slate-400 px-2">
+          <div x-text="t('outcome')"></div><div class="text-center" x-text="t('odds')"></div><div class="text-center" x-text="t('stake')"></div><div class="text-right" x-text="t('source')"></div>
+        </div>
+        <template x-for="bet in calcBetRows" :key="bet.label + bet.bookmaker">
+          <div class="bg-slate-700/50 rounded px-3 py-2 grid grid-cols-4 items-center">
+            <div class="text-white text-sm" x-text="bet.label"></div>
+            <div class="text-center text-yellow-400 font-bold" x-text="bet.odds"></div>
+            <div class="text-center text-white font-bold" x-text="money(bet.stake)"></div>
+            <div class="text-right text-slate-300 text-xs" x-text="bet.bookmaker"></div>
+          </div>
+        </template>
+      </div>
+
+      <div x-show="!calcResult" class="text-slate-500 text-sm text-center py-4 x-cloak">
+        <span x-text="t('selectCalcHint')"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右栏：今日统计 + 历史 -->
+  <div class="col-span-12 lg:col-span-3 order-2 lg:order-3 space-y-3">
+
+    <!-- 当前策略机会 -->
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-green-400" x-text="strategyName(selectedStrategy)"></h2>
+        <span class="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full" x-text="selectedStrategySignals.length + ' ' + t('active')"></span>
+      </div>
+
+      <div class="text-[11px] text-slate-400 mb-2" x-show="filters">
+        <span x-text="t('filters') + ': ' + t('afterCommission') + ' >= ' + (filters?.min_profit_after_commission_pct ?? 0) + '%'"></span>
+        <span class="mx-1">|</span>
+        <span x-text="t('slippageBuffer') + ' >= ' + (filters?.min_slippage_tolerance_pct ?? 0) + '%'"></span>
+      </div>
+
+      <div x-show="selectedStrategySignals.length === 0" class="text-slate-500 text-sm text-center py-4">
+        <span x-text="t('noStrategySignals')"></span><br><span class="text-xs" x-text="t('scanning')"></span>
+      </div>
+
+      <div class="space-y-2 max-h-[42rem] overflow-y-auto scrollbar-thin">
+        <template x-for="sig in selectedStrategySignals" :key="sig.key">
+          <div class="bg-green-500/10 border border-green-500/30 rounded-lg p-3 cursor-pointer hover:border-green-400 transition"
+               @click="selectSignal(sig)"
+               :class="{
+                 'border-green-400 bg-green-500/20': selectedSignalKey === sig.key,
+                 'border-amber-400/70 bg-amber-500/10': sig.riskFlags.some(f => f.level === 'warning'),
+                 'border-red-400/70 bg-red-500/10': sig.isSuspicious
+               }">
+            <div class="text-xs text-green-400 font-bold" x-text="sig.metricLabel + ': ' + sig.metricValue"></div>
+            <div class="text-sm text-white mt-1 leading-tight" x-text="sig.match"></div>
+            <div class="text-xs text-slate-400 mt-1" x-text="sig.subtitle"></div>
+            <div class="text-xs text-green-300 mt-1" x-show="sig.net !== null">
+              <span x-text="sig.netLabel"></span>: <span x-text="money(sig.net)"></span>
+              <span class="text-slate-500" x-text="' / ' + currencySymbol + '1000'"></span>
+            </div>
+            <div class="text-[11px] text-slate-400 mt-1">
+              <span x-text="sig.riskText"></span>
+            </div>
+            <div class="mt-2 grid grid-cols-3 gap-2 rounded border border-blue-400/20 bg-blue-500/10 p-2 text-[11px]" x-show="sig.strategy !== 'info_gap'">
+              <div>
+                <div class="text-slate-500" x-text="t('avgLifetime')"></div>
+                <div class="text-blue-200 font-bold" x-text="averageSignalLifetime(sig)"></div>
+              </div>
+              <div>
+                <div class="text-slate-500" x-text="t('medianLifetime')"></div>
+                <div class="text-blue-200 font-bold" x-text="medianSignalLifetime(sig)"></div>
+              </div>
+              <div>
+                <div class="text-slate-500" x-text="t('activeFor')"></div>
+                <div class="text-blue-200 font-bold" x-text="signalActiveFor(sig)"></div>
+              </div>
+              <div class="col-span-3 text-amber-200" x-text="t('actionWindow')"></div>
+            </div>
+            <div class="mt-2 rounded border border-slate-600/70 bg-slate-950/35 p-2">
+              <div class="text-[11px] uppercase tracking-normal text-slate-400" x-text="t('executionPlan')"></div>
+              <template x-for="(step, idx) in sig.executionPlan" :key="sig.key + '-step-' + idx">
+                <div class="mt-1 grid grid-cols-[18px_1fr] sm:grid-cols-[18px_1fr_auto] gap-2 text-[11px]">
+                  <span class="text-slate-500" x-text="idx + 1 + '.'"></span>
+                  <span class="text-slate-200 break-words min-w-0" x-text="step.action"></span>
+                  <span class="text-green-300 col-start-2 sm:col-start-auto sm:text-right whitespace-nowrap" x-text="step.stake"></span>
+                </div>
+              </template>
+              <div class="mt-1 text-[11px] text-emerald-300" x-show="sig.expectedProfit" x-text="t('expectedProfit') + ': ' + sig.expectedProfit"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-1" x-show="sig.riskFlags.length > 0">
+              <template x-for="flag in sig.riskFlags" :key="sig.key + flag.code">
+                <span class="rounded border px-1.5 py-0.5 text-[10px]"
+                      :class="flag.level === 'suspicious' ? 'border-red-400/50 text-red-200 bg-red-500/10' : 'border-amber-400/50 text-amber-200 bg-amber-500/10'"
+                      x-text="flag.message"></span>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- 支持开发 -->
+    <div class="bg-slate-800 rounded-lg p-3 border border-rose-400/30">
+      <h2 class="font-bold text-rose-200 mb-2" x-text="t('supportTitle')"></h2>
+      <p class="text-xs text-slate-400 leading-relaxed mb-3" x-text="t('supportText')"></p>
+      <button @click="openDonation()"
+              class="w-full rounded border border-rose-300/40 bg-rose-500/15 px-3 py-2 text-sm font-bold text-rose-100 hover:bg-rose-500/25 hover:text-white transition">
+        <span x-text="t('coffeeButton')"></span>
+      </button>
+      <div class="mt-2 text-[11px] text-slate-500" x-text="t('supportOptional')"></div>
+    </div>
+
+    <!-- 历史统计 -->
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <h2 class="font-bold text-orange-400 mb-3" x-text="t('historicalStats')"></h2>
+      <div class="space-y-3">
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400 text-sm" x-text="t('historyRecords')"></span>
+          <span class="text-white font-bold" x-text="history.length"></span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400 text-sm" x-text="t('bestHistoricalProfit')"></span>
+          <span class="text-yellow-400 font-bold" x-text="historyBestProfit ? historyBestProfit.toFixed(3) + '%' : '-'"></span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400 text-sm" x-text="t('latestRecord')"></span>
+          <span class="text-slate-200 text-xs" x-text="historyLatestTime"></span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400 text-sm" x-text="t('activeNow')"></span>
+          <span class="text-blue-400 font-bold" x-text="strategyCount('surebet') + strategyCount('middle') + strategyCount('multi_market')"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史记录 -->
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-slate-300" x-text="t('history')"></h2>
+        <button @click="exportCSV()" class="text-xs text-blue-400 hover:text-blue-300 border border-blue-400/30 px-2 py-1 rounded">
+          <span x-text="t('exportCsv')"></span>
+        </button>
+      </div>
+      <div class="space-y-1.5 max-h-80 overflow-y-auto scrollbar-thin">
+        <template x-for="rec in history" :key="rec.id">
+          <div class="bg-slate-700/40 rounded p-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-bold" :class="historyMetricClass(rec)" x-text="historyMetricText(rec)"></div>
+              <span x-show="historyIsSuspicious(rec)" class="rounded border border-red-400/50 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200">suspicious</span>
+            </div>
+            <div class="text-white" x-text="rec.match"></div>
+            <div class="text-slate-400" x-text="historyTypeLabel(rec)"></div>
+            <div class="text-slate-500" x-text="rec.detected_at.substring(0,19).replace('T',' ')"></div>
+          </div>
+        </template>
+        <div x-show="history.length === 0" class="text-slate-500 text-center text-xs py-4" x-text="t('noHistory')"></div>
+      </div>
+    </div>
+
+    <!-- 所有比赛快速列表 -->
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <h2 class="font-bold text-slate-300 mb-2" x-text="t('allMatches')"></h2>
+      <div class="space-y-1 max-h-48 overflow-y-auto scrollbar-thin">
+        <template x-for="ev in filteredEvents" :key="ev.id">
+          <div class="text-xs px-2 py-1.5 rounded cursor-pointer hover:bg-slate-700 flex justify-between"
+               @click="selectEvent(ev)">
+            <span class="text-slate-300" x-text="ev.match"></span>
+            <span class="text-slate-500" x-text="formatTime(ev.commence).split(' ')[0]"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 提醒音效（套利出现时） -->
+<audio id="arb-alert" preload="auto">
+  <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdHiHi4mDfHJqaGhoa2xyeoKJi4uIhH52bWZhYWVqcnyFjI+Oj4+Mi4mHhYSEhISFhoiJi4yMjYyLioiGhIOBgIB/f4CBgoOEhYaGh4eHh4eHhoWEg4KBgIB/fn5+fn9/gIGCg4SEhYWFhYUFBQUE" type="audio/wav">
+</audio>
+
+<script>
+function dashboard() {
+  return {
+    lang: 'en',
+    connected: false,
+    ws: null,
+    lastUpdate: null,
+    nowMs: Date.now(),
+    refreshRateSeconds: 30,
+    signalTiming: {
+      first_seen: {},
+      active_seconds: {},
+      avg_seconds_by_strategy: {},
+      median_seconds_by_strategy: {},
+    },
+    apiRemaining: null,
+    totalEvents: 0,
+    donationUrl: 'https://buymeacoffee.com/neilsuuu',
+    selectedRegion: 'au',
+    regions: {},
+    regionTabs: [
+      { key: 'au', label: 'Australia', currency: 'A$' },
+      { key: 'eu', label: 'Europe', currency: '€' },
+      { key: 'uk', label: 'United Kingdom', currency: '£' },
+      { key: 'us', label: 'United States', currency: 'US$' },
+      { key: 'us2', label: 'United States 2', currency: 'US$' },
+    ],
+    arbitrages: [],
+    arbitragesRaw: [],
+    nearArb: [],
+    infoGap: [],
+    marketDimensions: { surebets: [], near: [], summary: { surebet_count: 0, near_count: 0 } },
+    middles: [],
+    filters: null,
+    allEvents: [],
+    selectedEvent: null,
+    selectedArb: null,
+    selectedOpportunity: null,
+    selectedGap: null,
+    selectedSignalKey: null,
+    totalStake: 1000,
+    calcResult: null,
+    searchQuery: '',
+    oddsFilter: 'all',
+    selectedStrategy: 'surebet',
+    selectedMarket: 'h2h',
+    analyticsScope: 'today',
+    history: [],
+    stats: { scans: 0, found: 0, maxProfit: null },
+    prevArbCount: 0,
+    marketMenu: [
+      { key: 'h2h', live: true },
+      { key: 'totals', live: true },
+      { key: 'spreads', live: true },
+      { key: 'asian_handicap', live: true },
+      { key: 'totals_middle', live: true },
+      { key: 'btts', live: false, disabled: true },
+      { key: 'double_chance', live: false, disabled: true },
+      { key: 'draw_no_bet', live: false, disabled: true },
+    ],
+    strategyMenu: [
+      { key: 'surebet', enabled: true },
+      { key: 'near', enabled: true },
+      { key: 'middle', enabled: true },
+      { key: 'info_gap', enabled: true },
+      { key: 'multi_market', enabled: true },
+    ],
+    analyticsTabs: [
+      { key: 'today', labelKey: 'today' },
+      { key: '7d', labelKey: 'last7d' },
+      { key: 'all', labelKey: 'allHistory' },
+    ],
+    copy: {
+      en: {
+        appTitle: 'WC2026 Arbitrage Console',
+        slogan: 'Not predicting outcomes. Exploiting inefficiencies.',
+        supportButton: 'Support ❤️',
+        disclaimerTitle: 'Advisory analytics only.',
+        disclaimer: 'Signals are decision-support outputs, not betting instructions or guarantees. Users remain solely responsible for execution, compliance, account eligibility, limits, and final outcomes. Market data is sourced in real time through configured authorized odds API integrations.',
+        region: 'Australia market (AU)',
+        regionTabs: 'Regions',
+        regionIsolation: 'Each region is scanned and calculated independently. No cross-region mixing.',
+        live: 'Live',
+        offline: 'Offline',
+        lastUpdate: 'Last update',
+        apiLeft: 'API left',
+        refreshRate: 'Refresh',
+        events: 'Events',
+        marketScanner: 'Market Scanner',
+        strategyScanner: 'Strategy Scanner',
+        opportunityEngine: 'Opportunity Engine',
+        strategyFirst: 'strategy first',
+        marketsCovered: 'Markets Covered',
+        secondaryInfo: 'secondary',
+        comingSoon: 'coming soon',
+        planned: 'planned',
+        enabled: 'enabled',
+        noStrategySignals: 'No signals for this strategy',
+        alwaysVisible: 'all modules',
+        liveData: 'live',
+        fallback: 'fallback',
+        signalsMini: 'signals',
+        dataMini: 'data',
+        disabled: 'disabled',
+        notRequested: 'not requested',
+        executable: 'Executable Surebets',
+        active: 'active',
+        filters: 'Filters',
+        afterCommission: 'after commission',
+        slippageBuffer: 'slippage buffer',
+        noSurebet: 'No executable surebets',
+        scanning: 'Scanning live markets...',
+        profit: 'Profit',
+        netAfterCommission: 'Net after commission',
+        executionPlan: 'Execution Plan',
+        expectedProfit: 'Expected profit',
+        avgLifetime: 'Avg retained',
+        medianLifetime: 'Median',
+        activeFor: 'Live for',
+        actionWindow: 'Execution window is live; odds can move before the next refresh.',
+        monitorOnly: 'Monitor only',
+        nearArb: 'Near Arbitrage',
+        infoGap: 'Information Gap',
+        betFirst: 'Bet first',
+        noInfoGap: 'No large price divergence',
+        multiMarket: 'Multi-Market Surebets',
+        executableShort: 'executable',
+        noMultiMarket: 'No executable multi-market surebets',
+        middleOps: 'Middle Opportunities',
+        outside: 'Outside',
+        middleHit: 'Middle hit',
+        noMiddle: 'No middle opportunities',
+        overview: 'Opportunity Overview',
+        overviewHint: 'strategy signal board',
+        productAnalytics: 'Product Analytics',
+        analyticsHint: 'which modules are actually producing value',
+        last7d: '7D',
+        allHistory: 'All',
+        moduleValue: 'Module value',
+        liveIncluded: 'Today includes current live signals plus stored history. 7D and All use persisted history; new multi-market records will accumulate from future scans.',
+        surebets: 'Surebets',
+        nearArbsShort: 'Near',
+        multiMarketShort: 'Multi-market',
+        middleShort: 'Middle',
+        valueBetsShort: 'EV+',
+        infoGapShort: 'Info Gap',
+        marketCoverage: 'Market coverage',
+        topSignals: 'Top signals',
+        noSignals: 'No signals yet',
+        noMarketRows: 'No rows for this market on the selected match',
+        oddsDetail: 'Odds Detail',
+        searchTeams: 'Search teams...',
+        all: 'All',
+        today: 'Today',
+        withArb: 'With arb',
+        selectHint: 'Select a match or signal from the left panel',
+        gapScore: 'Gap score',
+        avgGap: 'Avg gap',
+        orderHint: 'Order hint',
+        eventMarketOps: 'Market opportunities for this match',
+        bookmaker: 'Bookmaker',
+        bestCombo: 'Best combo',
+        arbWindow: 'Arbitrage window open',
+        stakeCalc: 'Stake Calculator',
+        bankroll: 'Bankroll',
+        guaranteedReturn: 'Guaranteed return',
+        net: 'Net',
+        outcome: 'Outcome',
+        odds: 'Odds',
+        stake: 'Stake',
+        source: 'Source',
+        selectCalcHint: 'Select an opportunity or match first',
+        todayStats: 'Today Stats',
+        historicalStats: 'Historical Stats',
+        historyRecords: 'Records',
+        bestHistoricalProfit: 'Best profit',
+        latestRecord: 'Latest',
+        scans: 'Scans',
+        found: 'Found',
+        maxProfit: 'Max profit',
+        activeNow: 'Active now',
+        supportTitle: 'Support Development',
+        supportText: 'WC2026 Opportunity Engine is free and community-supported. Donations help cover odds API usage, cloud hosting, storage, and future features.',
+        coffeeButton: 'Buy me a coffee ☕',
+        supportOptional: 'Donations are optional. The platform remains free.',
+        history: 'History',
+        exportCsv: 'Export CSV',
+        noHistory: 'No history yet',
+        allMatches: 'All Matches',
+      },
+      zh: {
+        appTitle: 'WC2026 套利监控台',
+        slogan: 'Not predicting outcomes. Exploiting inefficiencies.',
+        supportButton: 'Support ❤️',
+        disclaimerTitle: '仅作分析建议。',
+        disclaimer: '本系统输出为决策辅助信息，不构成下注指令或收益保证。用户需自行承担执行、合规、账户资格、限额与最终结果责任。市场数据通过已配置的授权赔率 API 实时获取。',
+        region: '澳洲市场 (AU)',
+        regionTabs: '地区',
+        regionIsolation: '每个地区独立扫描和计算，不做跨地区混合。',
+        live: '实时连接',
+        offline: '连接断开',
+        lastUpdate: '最后更新',
+        apiLeft: 'API剩余',
+        refreshRate: '刷新速率',
+        events: '比赛数',
+        marketScanner: '市场扫描器',
+        strategyScanner: 'Strategy Scanner',
+        opportunityEngine: '机会引擎',
+        strategyFirst: '策略优先',
+        marketsCovered: '盘口覆盖',
+        secondaryInfo: '辅助信息',
+        comingSoon: '即将推出',
+        planned: '规划中',
+        enabled: '已启用',
+        noStrategySignals: '当前策略暂无信号',
+        alwaysVisible: '全部模块',
+        liveData: '实时',
+        fallback: '回退',
+        signalsMini: '信号',
+        dataMini: '数据',
+        disabled: '已禁用',
+        notRequested: '未请求',
+        executable: '真实可执行机会',
+        active: '个活跃',
+        filters: '过滤',
+        afterCommission: '佣金后',
+        slippageBuffer: '滑点缓冲',
+        noSurebet: '当前无可执行套利',
+        scanning: '实时扫描中...',
+        profit: '利润率',
+        netAfterCommission: '佣金后净利',
+        executionPlan: '执行计划',
+        expectedProfit: '预期收益',
+        avgLifetime: '平均保留',
+        medianLifetime: '中位数',
+        activeFor: '当前持续',
+        actionWindow: '当前仍在操作窗口内；下一次刷新前赔率可能变化。',
+        monitorOnly: '仅监控',
+        nearArb: '接近套利',
+        infoGap: '平台信息差',
+        betFirst: '建议先下',
+        noInfoGap: '暂无明显信息差',
+        multiMarket: '多维盘口机会',
+        executableShort: '可执行',
+        noMultiMarket: '当前无可执行多维套利',
+        middleOps: 'Middle 机会',
+        outside: '外侧',
+        middleHit: '中间命中',
+        noMiddle: '当前无 Middle 机会',
+        overview: '机会总览',
+        overviewHint: '策略信号面板',
+        productAnalytics: '产品分析',
+        analyticsHint: '看清哪些模块真正产生价值',
+        last7d: '7天',
+        allHistory: '全部历史',
+        moduleValue: '模块价值',
+        liveIncluded: '今天包含当前实时信号和已存历史。7天与全部历史基于已落库记录；多盘口等新记录会从后续扫描开始累计。',
+        surebets: '套利',
+        nearArbsShort: '接近',
+        multiMarketShort: '多盘口',
+        middleShort: 'Middle',
+        valueBetsShort: 'EV+',
+        infoGapShort: '信息差',
+        marketCoverage: '盘口覆盖',
+        topSignals: 'Top 信号',
+        noSignals: '暂无信号',
+        noMarketRows: '当前比赛没有该盘口数据',
+        oddsDetail: '赔率详情',
+        searchTeams: '搜索球队...',
+        all: '全部',
+        today: '今天',
+        withArb: '有套利',
+        selectHint: '从左侧选择比赛或信号查看详情',
+        gapScore: '信息差评分',
+        avgGap: '平均价差',
+        orderHint: '下单顺序建议',
+        eventMarketOps: '该比赛多维盘口机会',
+        bookmaker: '平台',
+        bestCombo: '最优组合',
+        arbWindow: '套利窗口开放',
+        stakeCalc: '投注分配计算器',
+        bankroll: '总资金',
+        guaranteedReturn: '保证回报',
+        net: '净利',
+        outcome: '结果',
+        odds: '赔率',
+        stake: '下注额',
+        source: '来源平台',
+        selectCalcHint: '请先选择一个机会或比赛',
+        todayStats: '今日统计',
+        historicalStats: '历史统计',
+        historyRecords: '历史记录数',
+        bestHistoricalProfit: '历史最高利润',
+        latestRecord: '最近记录',
+        scans: '扫描次数',
+        found: '发现机会',
+        maxProfit: '最高利润率',
+        activeNow: '当前活跃',
+        supportTitle: 'Support Development',
+        supportText: 'WC2026 Opportunity Engine is free and community-supported. Donations help cover odds API usage, cloud hosting, storage, and future features.',
+        coffeeButton: 'Buy me a coffee ☕',
+        supportOptional: '捐赠完全自愿，平台功能保持免费开放。',
+        history: '历史记录',
+        exportCsv: '导出 CSV',
+        noHistory: '暂无历史记录',
+        allMatches: '全部比赛',
+      },
+    },
+
+    get eventGap() {
+      if (!this.selectedEvent) return null;
+      return this.infoGap.find(g => g.event_id === this.selectedEvent.id) || null;
+    },
+
+    get historyBestProfit() {
+      const profitRecords = this.history.filter(rec => (rec.detail?.market_key || rec.detail?.dimension || 'h2h') !== 'info_gap');
+      if (!profitRecords.length) return null;
+      return Math.max(...profitRecords.map(rec => Number(rec.profit_pct || 0)));
+    },
+
+    get historyLatestTime() {
+      if (!this.history.length) return '-';
+      const latest = this.history[0]?.detected_at || '';
+      return latest ? latest.substring(0, 19).replace('T', ' ') : '-';
+    },
+
+    get analyticsRecords() {
+      const now = Date.now();
+      return this.history.filter(rec => {
+        if (this.analyticsScope === 'all') return true;
+        const t = new Date(rec.detected_at).getTime();
+        if (!Number.isFinite(t)) return false;
+        if (this.analyticsScope === 'today') {
+          const d = new Date(t);
+          const today = new Date();
+          return d.getFullYear() === today.getFullYear()
+            && d.getMonth() === today.getMonth()
+            && d.getDate() === today.getDate();
+        }
+        return now - t <= 7 * 24 * 60 * 60 * 1000;
+      });
+    },
+
+    get analyticsCounts() {
+      const counts = {
+        h2h: 0,
+        totals: 0,
+        asian_handicap: 0,
+        spreads: 0,
+        middle: 0,
+        gap: 0,
+      };
+
+      for (const rec of this.analyticsRecords) {
+        const detail = rec.detail || {};
+        const key = detail.market_key || detail.dimension || 'h2h';
+        if (key === 'totals_middle') counts.middle += 1;
+        else if (key === 'totals') counts.totals += 1;
+        else if (key === 'asian_handicap') counts.asian_handicap += 1;
+        else if (key === 'spreads') counts.spreads += 1;
+        else counts.h2h += 1;
+      }
+
+      if (this.analyticsScope === 'today') {
+        counts.h2h += this.arbitrages.length;
+        for (const item of this.marketDimensions.surebets || []) {
+          const key = this.marketKey(item);
+          if (key === 'totals') counts.totals += 1;
+          else if (key === 'asian_handicap') counts.asian_handicap += 1;
+          else if (key === 'spreads') counts.spreads += 1;
+        }
+        counts.middle += this.middles.length;
+        counts.gap += this.infoGap.length;
+      }
+
+      return counts;
+    },
+
+    get analyticsSurebetRows() {
+      const rows = [
+        { key: 'h2h', label: 'H2H', count: this.analyticsCounts.h2h },
+        { key: 'totals', label: 'Totals', count: this.analyticsCounts.totals },
+        { key: 'asian_handicap', label: 'AH', count: this.analyticsCounts.asian_handicap },
+        { key: 'spreads', label: 'Spreads', count: this.analyticsCounts.spreads },
+      ];
+      const total = rows.reduce((sum, row) => sum + row.count, 0);
+      return rows.map(row => ({
+        ...row,
+        percent: total > 0 ? row.count / total * 100 : 0,
+      }));
+    },
+
+    get analyticsValueRows() {
+      return [
+        { key: 'surebet', label: 'Surebet', count: this.analyticsTotal('surebet') },
+        { key: 'middle', label: 'Middle', count: this.analyticsTotal('middle') },
+        { key: 'gap', label: 'Gap', count: this.analyticsTotal('gap') },
+      ].sort((a, b) => b.count - a.count);
+    },
+
+    get analyticsMiddleShare() {
+      const total = this.analyticsTotal('surebet') + this.analyticsTotal('middle') + this.analyticsTotal('gap');
+      return total > 0 ? this.analyticsTotal('middle') / total * 100 : 0;
+    },
+
+    get analyticsGapPerDay() {
+      const days = this.analyticsScope === 'today' ? 1 : (this.analyticsScope === '7d' ? 7 : this.analyticsAllDays);
+      return (this.analyticsTotal('gap') / Math.max(days, 1)).toFixed(1);
+    },
+
+    get analyticsAllDays() {
+      if (!this.analyticsRecords.length) return 1;
+      const times = this.analyticsRecords
+        .map(rec => new Date(rec.detected_at).getTime())
+        .filter(t => Number.isFinite(t));
+      if (!times.length) return 1;
+      return Math.max(1, Math.ceil((Math.max(...times) - Math.min(...times)) / (24 * 60 * 60 * 1000)) + 1);
+    },
+
+    get analyticsFootnote() {
+      return this.t('liveIncluded');
+    },
+
+    get currentRegionLabel() {
+      const current = this.regionTabs.find(r => r.key === this.selectedRegion);
+      return current?.label || this.selectedRegion.toUpperCase();
+    },
+
+    get currencySymbol() {
+      return this.regions[this.selectedRegion]?.currency
+        || this.regionTabs.find(r => r.key === this.selectedRegion)?.currency
+        || '$';
+    },
+
+    get topSignals() {
+      return this.selectedStrategySignals.slice(0, 5).map(sig => ({
+        type: sig.type,
+        match: sig.match,
+        label: sig.label,
+        value: sig.metricValue,
+        color: sig.strategy === 'info_gap' ? 'text-amber-300'
+          : (sig.strategy === 'middle' ? 'text-fuchsia-300'
+          : (sig.strategy === 'near' ? 'text-yellow-300'
+          : (sig.strategy === 'multi_market' ? 'text-cyan-300' : 'text-green-300'))),
+      }));
+    },
+
+    get selectedStrategySignals() {
+      if (this.selectedStrategy === 'surebet') {
+        return this.arbitrages.map(a => this.signalFromH2h(a, 'arb')).sort((a, b) => b.profit_pct - a.profit_pct);
+      }
+      if (this.selectedStrategy === 'near') {
+        return [
+          ...this.nearArb.map(n => this.signalFromH2h(n, 'near')),
+          ...(this.marketDimensions.near || []).map(m => this.signalFromMarket(m, 'near')),
+        ].sort((a, b) => (a.margin || 99) - (b.margin || 99));
+      }
+      if (this.selectedStrategy === 'middle') {
+        return this.middles.map(m => this.signalFromMiddle(m));
+      }
+      if (this.selectedStrategy === 'info_gap') {
+        return this.infoGap.map(g => this.signalFromInfoGap(g));
+      }
+      if (this.selectedStrategy === 'multi_market') {
+        return (this.marketDimensions.surebets || []).map(m => this.signalFromMarket(m, 'surebet')).sort((a, b) => b.profit_pct - a.profit_pct);
+      }
+      return [];
+    },
+
+    get selectedExecutableSignals() {
+      if (this.selectedMarket === 'h2h') {
+        return this.arbitrages.map(a => this.signalFromH2h(a, 'arb'));
+      }
+      if (this.selectedMarket === 'totals_middle') {
+        return this.middles.map(m => this.signalFromMiddle(m));
+      }
+      return this.selectedMarketSurebets.map(m => this.signalFromMarket(m, 'surebet'));
+    },
+
+    get selectedNearSignals() {
+      if (this.selectedMarket === 'h2h') {
+        return this.nearArb.map(n => this.signalFromH2h(n, 'near'));
+      }
+      if (this.selectedMarket === 'totals_middle') return [];
+      return this.selectedMarketNear.map(m => this.signalFromMarket(m, 'near'));
+    },
+
+    get selectedInfoGap() {
+      return this.selectedMarket === 'h2h' ? this.infoGap : [];
+    },
+
+    get selectedMarketSurebets() {
+      if (this.selectedMarket === 'h2h' || this.selectedMarket === 'totals_middle') return [];
+      return (this.marketDimensions.surebets || []).filter(x => this.marketKey(x) === this.selectedMarket);
+    },
+
+    get selectedMarketNear() {
+      if (this.selectedMarket === 'h2h' || this.selectedMarket === 'totals_middle') return [];
+      return (this.marketDimensions.near || []).filter(x => this.marketKey(x) === this.selectedMarket);
+    },
+
+    get selectedMarketMiddles() {
+      return this.selectedMarket === 'totals_middle' ? this.middles : [];
+    },
+
+    get selectedEventDims() {
+      if (!this.selectedEvent) return [];
+      const eid = this.selectedEvent.id;
+      const sure = (this.marketDimensions.surebets || []).filter(x => x.event_id === eid);
+      const near = (this.marketDimensions.near || []).filter(x => x.event_id === eid);
+      return [...sure, ...near].slice(0, 8);
+    },
+
+    get calcBetRows() {
+      if (!this.calcResult?.bets) return [];
+      if (Array.isArray(this.calcResult.bets)) return this.calcResult.bets;
+      return Object.entries(this.calcResult.bets).map(([key, bet]) => ({
+        label: ({home:this.sideLabel('home'), draw:this.sideLabel('draw'), away:this.sideLabel('away')}[key] || bet.label || key),
+        ...bet,
+      }));
+    },
+
+    get marketDetailColumns() {
+      if (this.selectedMarket === 'totals') {
+        return [
+          { key: 'line', label: 'Line', align: 'left' },
+          { key: 'bookmaker', label: this.t('bookmaker'), align: 'left' },
+          { key: 'over', label: 'Over', align: 'center' },
+          { key: 'under', label: 'Under', align: 'center' },
+          { key: 'margin', label: 'margin', align: 'center' },
+        ];
+      }
+      if (this.selectedMarket === 'spreads' || this.selectedMarket === 'asian_handicap') {
+        return [
+          { key: 'line', label: 'Line', align: 'left' },
+          { key: 'bookmaker', label: this.t('bookmaker'), align: 'left' },
+          { key: 'home', label: this.sideLabel('home'), align: 'center' },
+          { key: 'away', label: this.sideLabel('away'), align: 'center' },
+          { key: 'margin', label: 'margin', align: 'center' },
+        ];
+      }
+      if (this.selectedMarket === 'totals_middle') {
+        return [
+          { key: 'range', label: 'Middle', align: 'left' },
+          { key: 'legs', label: 'Legs', align: 'left' },
+          { key: 'outside', label: this.t('outside'), align: 'center' },
+          { key: 'hit', label: this.t('middleHit'), align: 'center' },
+        ];
+      }
+      return [
+        { key: 'bookmaker', label: this.t('bookmaker'), align: 'left' },
+        { key: 'a', label: 'A', align: 'center' },
+        { key: 'b', label: 'B', align: 'center' },
+        { key: 'c', label: 'C', align: 'center' },
+      ];
+    },
+
+    get marketDetailRows() {
+      const ev = this.selectedEvent;
+      if (!ev) return [];
+      if (this.selectedMarket === 'totals') {
+        return Object.entries(ev.totals || {}).flatMap(([line, books]) =>
+          Object.entries(books).map(([bookmaker, odds]) => ({
+            key: `totals-${line}-${bookmaker}`,
+            line,
+            bookmaker,
+            over: odds.over ? Number(odds.over).toFixed(2) : '-',
+            under: odds.under ? Number(odds.under).toFixed(2) : '-',
+            margin: odds.over && odds.under ? (1 / odds.over + 1 / odds.under).toFixed(4) : '-',
+          }))
+        );
+      }
+      if (this.selectedMarket === 'spreads' || this.selectedMarket === 'asian_handicap') {
+        return Object.entries(ev.spreads || {})
+          .filter(([line]) => this.selectedMarket === 'asian_handicap' ? this.isQuarterLine(line) : !this.isQuarterLine(line))
+          .flatMap(([line, books]) => Object.entries(books).map(([bookmaker, odds]) => ({
+            key: `spreads-${line}-${bookmaker}`,
+            line,
+            bookmaker,
+            home: odds.home ? Number(odds.home).toFixed(2) : '-',
+            away: odds.away ? Number(odds.away).toFixed(2) : '-',
+            margin: odds.home && odds.away ? (1 / odds.home + 1 / odds.away).toFixed(4) : '-',
+          })));
+      }
+      if (this.selectedMarket === 'totals_middle') {
+        return this.middles
+          .filter(m => m.event_id === ev.id)
+          .map(m => ({
+            key: `middle-${m.event_id}-${m.low_line}-${m.high_line}`,
+            range: `O ${m.low_line} / U ${m.high_line}`,
+            legs: (m.legs || []).map(l => `${l.label} @ ${l.bookmaker}`).join(' | '),
+            outside: this.moneySigned(m.outside_net),
+            hit: `+${Number(m.middle_profit_pct || 0).toFixed(3)}%`,
+          }));
+      }
+      const map = ev[this.selectedMarket] || {};
+      return Object.entries(map).map(([bookmaker, odds]) => {
+        const entries = Object.entries(odds || {});
+        return {
+          key: `${this.selectedMarket}-${bookmaker}`,
+          bookmaker,
+          a: entries[0] ? `${entries[0][0]} ${Number(entries[0][1]).toFixed(2)}` : '-',
+          b: entries[1] ? `${entries[1][0]} ${Number(entries[1][1]).toFixed(2)}` : '-',
+          c: entries[2] ? `${entries[2][0]} ${Number(entries[2][1]).toFixed(2)}` : '-',
+        };
+      });
+    },
+
+    get oddsTableRows() {
+      if (!this.selectedEvent) return [];
+      const bms = this.selectedEvent.bookmakers || {};
+      const rows = [];
+      // 找最高赔率
+      let maxH = 0, maxD = 0, maxA = 0;
+      for (const [bm, o] of Object.entries(bms)) {
+        if (o.home > maxH) maxH = o.home;
+        if (o.draw > maxD) maxD = o.draw;
+        if (o.away > maxA) maxA = o.away;
+      }
+      for (const [bm, o] of Object.entries(bms)) {
+        const margin = (o.home && o.draw && o.away)
+          ? (1/o.home + 1/o.draw + 1/o.away).toFixed(4) : '-';
+        rows.push({
+          bookmaker: bm,
+          home: o.home ? o.home.toFixed(2) : null,
+          draw: o.draw ? o.draw.toFixed(2) : null,
+          away: o.away ? o.away.toFixed(2) : null,
+          homeBest: o.home === maxH,
+          drawBest: o.draw === maxD,
+          awayBest: o.away === maxA,
+          margin,
+        });
+      }
+      return rows.sort((a, b) => a.bookmaker.localeCompare(b.bookmaker));
+    },
+
+    get bestOdds() {
+      if (!this.selectedEvent) return {};
+      const bms = this.selectedEvent.bookmakers || {};
+      let h = 0, d = 0, a = 0;
+      for (const o of Object.values(bms)) {
+        if (o.home > h) h = o.home;
+        if (o.draw > d) d = o.draw;
+        if (o.away > a) a = o.away;
+      }
+      return { home: h || null, draw: d || null, away: a || null };
+    },
+
+    get bestMargin() {
+      const b = this.bestOdds;
+      if (!b.home || !b.draw || !b.away) return 99;
+      return 1/b.home + 1/b.draw + 1/b.away;
+    },
+
+    get filteredEvents() {
+      let evs = this.allEvents;
+      if (this.searchQuery) {
+        const q = this.searchQuery.toLowerCase();
+        evs = evs.filter(e => e.match.toLowerCase().includes(q));
+      }
+      if (this.oddsFilter === 'arb') {
+        const arbIds = new Set(this.arbitrages.map(a => a.event_id));
+        evs = evs.filter(e => arbIds.has(e.id));
+      }
+      return evs;
+    },
+
+    init() {
+      this.loadAppConfig();
+      this.connect();
+      this.loadHistory();
+      setInterval(() => this.loadHistory(), 60000);
+      setInterval(() => { this.nowMs = Date.now(); }, 1000);
+    },
+
+    t(key) {
+      return this.copy[this.lang]?.[key] || this.copy.en[key] || key;
+    },
+
+    money(value) {
+      const amount = Number(value || 0).toFixed(2);
+      return `${this.currencySymbol}${amount}`;
+    },
+
+    moneySigned(value) {
+      const n = Number(value || 0);
+      const sign = n >= 0 ? '+' : '-';
+      return `${sign}${this.currencySymbol}${Math.abs(n).toFixed(2)}`;
+    },
+
+    async loadAppConfig() {
+      try {
+        const r = await fetch('/api/config');
+        const config = await r.json();
+        if (config.donation_url) this.donationUrl = config.donation_url;
+        if (config.poll_interval) this.refreshRateSeconds = Number(config.poll_interval) || this.refreshRateSeconds;
+      } catch(e) {}
+    },
+
+    openDonation() {
+      window.open(this.donationUrl, '_blank', 'noopener,noreferrer');
+    },
+
+    regionSummary(key) {
+      const data = this.regions[key];
+      if (!data) return '0 / 0';
+      return `${data.arbitrages?.length || 0} arb / ${data.total_events || 0} ev`;
+    },
+
+    selectRegion(key) {
+      this.selectedRegion = key;
+      this.selectedEvent = null;
+      this.selectedArb = null;
+      this.selectedOpportunity = null;
+      this.selectedGap = null;
+      this.selectedSignalKey = null;
+      this.calcResult = null;
+      this.applyRegionData(this.regions[key] || {});
+      this.selectFirstForMarket();
+    },
+
+    applyRegionData(regionData) {
+      this.apiRemaining = regionData.api_remaining || '?';
+      this.totalEvents = regionData.total_events || 0;
+      this.arbitrages = regionData.arbitrages || [];
+      this.arbitragesRaw = regionData.arbitrages_raw || [];
+      this.nearArb = regionData.near_arb || [];
+      this.infoGap = regionData.info_gap || [];
+      this.marketDimensions = regionData.market_dimensions || { surebets: [], near: [], summary: { surebet_count: 0, near_count: 0 } };
+      this.middles = regionData.middles || [];
+      this.filters = regionData.filters || null;
+      this.allEvents = regionData.all_events || [];
+    },
+
+    marketKey(item) {
+      return item?.market_key || item?.dimension || '';
+    },
+
+    signalActiveFor(sig) {
+      const seconds = this.signalTiming?.active_seconds?.[this.serverSignalKey(sig)] || 0;
+      return this.formatDuration(seconds * 1000);
+    },
+
+    averageSignalLifetime(sig) {
+      const seconds = this.signalTiming?.avg_seconds_by_strategy?.[sig.strategy] || 0;
+      return this.formatDuration(seconds * 1000);
+    },
+
+    medianSignalLifetime(sig) {
+      const seconds = this.signalTiming?.median_seconds_by_strategy?.[sig.strategy] || 0;
+      return this.formatDuration(seconds * 1000);
+    },
+
+    serverSignalKey(sig) {
+      return `${this.selectedRegion}:${sig.key}`;
+    },
+
+    formatDuration(ms) {
+      const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      if (minutes <= 0) return `${seconds}s`;
+      if (minutes < 60) return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+      const hours = Math.floor(minutes / 60);
+      const restMinutes = minutes % 60;
+      return `${hours}h ${restMinutes.toString().padStart(2, '0')}m`;
+    },
+
+    normalizeRiskFlags(item) {
+      return item?.risk_flags || [];
+    },
+
+    riskSummary(item) {
+      const flags = this.normalizeRiskFlags(item);
+      if (flags.length === 0) return '';
+      return flags.map(f => f.message).join(' ');
+    },
+
+    expectedProfitText(item) {
+      if (item?.net_profit !== undefined) return this.money(item.net_profit);
+      if (item?.commission_adjusted?.net_after_commission !== undefined) return this.money(item.commission_adjusted.net_after_commission);
+      if (item?.middle_net !== undefined) return this.money(item.middle_net);
+      return '';
+    },
+
+    planFromBets(bets) {
+      const rows = Array.isArray(bets)
+        ? bets
+        : Object.entries(bets || {}).map(([side, bet]) => ({
+            label: this.sideLabel(side),
+            ...bet,
+          }));
+      return rows.map(bet => ({
+        action: `Bet ${bet.label || bet.side || 'leg'} @ ${Number(bet.odds || 0).toFixed(2)} on ${bet.bookmaker || '-'}`,
+        stake: this.money(bet.stake || 0),
+      }));
+    },
+
+    planFromInfoGap(item) {
+      const first = item?.order_hint?.[0];
+      if (!first) return [{ action: this.t('monitorOnly'), stake: '-' }];
+      return [{
+        action: `${this.t('monitorOnly')}: ${this.sideLabel(first.side)} @ ${Number(first.odds || 0).toFixed(2)} on ${first.bookmaker || '-'}`,
+        stake: `${Number(first.gap_pct || 0).toFixed(2)}% gap`,
+      }];
+    },
+
+    signalFromH2h(item, kind) {
+      const net = item.commission_adjusted?.net_after_commission ?? item.net_profit ?? 0;
+      const isNear = kind === 'near';
+      return {
+        key: `h2h-${kind}-${item.event_id}`,
+        strategy: isNear ? 'near' : 'surebet',
+        type: 'h2h',
+        kind,
+        raw: item,
+        match: item.match,
+        label: this.marketName('h2h'),
+        subtitle: `${this.marketName('h2h')} | ${this.formatTime(item.commence)}`,
+        profit_pct: item.profit_pct || 0,
+        margin: item.margin,
+        net,
+        netLabel: kind === 'arb' ? this.t('netAfterCommission') : this.t('net'),
+        metricLabel: isNear ? 'margin' : this.t('profit'),
+        metricValue: isNear ? Number(item.margin || 0).toFixed(4) : '+' + Number(item.profit_pct || 0).toFixed(3) + '%',
+        executionPlan: this.planFromBets(item.bets),
+        expectedProfit: isNear ? '' : this.expectedProfitText(item),
+        riskFlags: this.normalizeRiskFlags(item),
+        isSuspicious: Boolean(item.is_suspicious),
+        riskText: kind === 'arb'
+          ? `${this.t('slippageBuffer')}: ${(item.execution?.slippage_tolerance_pct ?? 0).toFixed(3)}%`
+          : `${this.t('nearArb')} | margin ${Number(item.margin || 0).toFixed(4)}`,
+      };
+    },
+
+    signalFromMarket(item, kind) {
+      const isNear = kind === 'near';
+      return {
+        key: `${this.marketKey(item)}-${kind}-${item.event_id}-${item.line || 'main'}`,
+        strategy: isNear ? 'near' : 'multi_market',
+        type: 'market',
+        kind,
+        raw: item,
+        match: item.match,
+        label: this.marketLabel(item),
+        subtitle: `${this.marketLabel(item)}${item.line ? ' | line ' + item.line : ''}`,
+        profit_pct: item.profit_pct || 0,
+        margin: item.margin,
+        net: item.net_profit || 0,
+        netLabel: this.t('net'),
+        metricLabel: isNear ? 'margin' : this.t('profit'),
+        metricValue: isNear ? Number(item.margin || 0).toFixed(4) : '+' + Number(item.profit_pct || 0).toFixed(3) + '%',
+        executionPlan: this.planFromBets(item.bets),
+        expectedProfit: isNear ? '' : this.expectedProfitText(item),
+        riskFlags: this.normalizeRiskFlags(item),
+        isSuspicious: Boolean(item.is_suspicious),
+        riskText: `${isNear ? this.t('nearArb') + ' | ' : ''}margin ${Number(item.margin || 0).toFixed(4)}`,
+      };
+    },
+
+    signalFromMiddle(item) {
+      return {
+        key: `middle-${item.event_id}-${item.low_line}-${item.high_line}`,
+        strategy: 'middle',
+        type: 'middle',
+        kind: 'middle',
+        raw: item,
+        match: item.match,
+        label: this.marketName('totals_middle'),
+        subtitle: `O ${item.low_line} / U ${item.high_line}`,
+        profit_pct: item.middle_profit_pct || 0,
+        margin: item.margin,
+        net: item.outside_net || 0,
+        netLabel: this.t('outside'),
+        metricLabel: this.t('middleHit'),
+        metricValue: '+' + Number(item.middle_profit_pct || 0).toFixed(3) + '%',
+        executionPlan: this.planFromBets(item.legs),
+        expectedProfit: this.expectedProfitText(item),
+        riskFlags: this.normalizeRiskFlags(item),
+        isSuspicious: Boolean(item.is_suspicious),
+        riskText: `${this.t('middleHit')}: +${Number(item.middle_profit_pct || 0).toFixed(3)}%`,
+      };
+    },
+
+    signalFromInfoGap(item) {
+      return {
+        key: `gap-${item.event_id}`,
+        strategy: 'info_gap',
+        type: 'info_gap',
+        kind: 'divergence',
+        raw: item,
+        match: item.match,
+        label: this.strategyName('info_gap'),
+        subtitle: `${this.t('avgGap')}: ${Number(item.avg_gap_pct || 0).toFixed(2)}%`,
+        profit_pct: item.score || 0,
+        margin: item.best_margin,
+        net: null,
+        netLabel: this.t('gapScore'),
+        metricLabel: this.t('gapScore'),
+        metricValue: Number(item.score || 0).toFixed(2),
+        executionPlan: this.planFromInfoGap(item),
+        expectedProfit: '',
+        riskFlags: [],
+        isSuspicious: false,
+        riskText: `${this.t('betFirst')}: ${this.sideLabel(item.order_hint?.[0]?.side)} @ ${item.order_hint?.[0]?.bookmaker || '-'}`,
+      };
+    },
+
+    marketName(key) {
+      const names = {
+        en: {
+          h2h: 'H2H / 1X2',
+          totals: 'Totals',
+          spreads: 'Spreads',
+          asian_handicap: 'Asian Handicap',
+          totals_middle: 'Totals Middle',
+          btts: 'BTTS',
+          double_chance: 'Double Chance',
+          draw_no_bet: 'Draw No Bet',
+        },
+        zh: {
+          h2h: '胜平负',
+          totals: '大小球',
+          spreads: '让球盘',
+          asian_handicap: '亚洲盘',
+          totals_middle: '大小球 Middle',
+          btts: '双方进球',
+          double_chance: '双重机会',
+          draw_no_bet: '平局退款',
+        },
+      };
+      return names[this.lang]?.[key] || names.en[key] || key;
+    },
+
+    marketDesc(key) {
+      const desc = {
+        en: {
+          h2h: 'home / draw / away',
+          totals: 'over / under same line',
+          spreads: 'handicap same line',
+          asian_handicap: 'quarter and half lines',
+          totals_middle: 'cross-line middle',
+          btts: 'yes / no',
+          double_chance: '1X / 12 / X2',
+          draw_no_bet: 'draw refunds',
+        },
+        zh: {
+          h2h: '主胜 / 平 / 客胜',
+          totals: '同线 over / under',
+          spreads: '同线让球',
+          asian_handicap: '0.25 / 0.5 / 0.75',
+          totals_middle: '跨线 middle',
+          btts: 'Yes / No',
+          double_chance: '1X / 12 / X2',
+          draw_no_bet: '平局退款',
+        },
+      };
+      return desc[this.lang]?.[key] || desc.en[key] || '';
+    },
+
+    strategyName(key) {
+      const names = {
+        en: {
+          surebet: 'Surebets',
+          near: 'Near Arbitrage',
+          middle: 'Middle Betting',
+          value: 'Value Bets (EV+)',
+          back_lay: 'Back/Lay Arb',
+          info_gap: 'Information Gap',
+          multi_market: 'Multi-Market',
+        },
+        zh: {
+          surebet: '套利机会',
+          near: '接近套利',
+          middle: 'Middle Betting',
+          value: '价值投注 EV+',
+          back_lay: 'Back/Lay 套利',
+          info_gap: '信息差',
+          multi_market: '多盘口',
+        },
+      };
+      return names[this.lang]?.[key] || names.en[key] || key;
+    },
+
+    strategyDesc(key) {
+      const desc = {
+        en: {
+          surebet: 'risk-controlled arbitrage',
+          near: 'closest prices to arb',
+          middle: 'sweet-zone outcomes',
+          value: 'model edge, coming soon',
+          back_lay: 'exchange hedge, coming soon',
+          info_gap: 'bookmaker divergence',
+          multi_market: 'totals, spreads, AH',
+        },
+        zh: {
+          surebet: '风控后的套利',
+          near: '最接近套利的价格',
+          middle: '中间区间双赢',
+          value: '模型优势，待接入',
+          back_lay: '交易所对冲，待接入',
+          info_gap: '平台价格分歧',
+          multi_market: '大小球、让球、亚洲盘',
+        },
+      };
+      return desc[this.lang]?.[key] || desc.en[key] || '';
+    },
+
+    strategyCount(key) {
+      if (key === 'surebet') return this.arbitrages.length;
+      if (key === 'near') return this.nearArb.length + (this.marketDimensions.near || []).length;
+      if (key === 'middle') return this.middles.length;
+      if (key === 'info_gap') return this.infoGap.length;
+      if (key === 'multi_market') return (this.marketDimensions.surebets || []).length;
+      return 0;
+    },
+
+    marketSignalCount(key) {
+      if (key === 'h2h') return this.arbitrages.length + this.nearArb.length;
+      if (key === 'totals') return this.countMarket('totals');
+      if (key === 'spreads') return this.countMarket('spreads');
+      if (key === 'asian_handicap') return this.countMarket('asian_handicap');
+      if (key === 'totals_middle') return this.middles.length;
+      return this.countMarket(key);
+    },
+
+    marketDataCount(key) {
+      if (key === 'h2h') {
+        return this.allEvents.filter(e => Object.keys(e.bookmakers || {}).length > 0).length;
+      }
+      if (key === 'totals') {
+        return this.allEvents.reduce((sum, e) => sum + Object.keys(e.totals || {}).length, 0);
+      }
+      if (key === 'spreads') {
+        return this.allEvents.reduce((sum, e) => sum + Object.keys(e.spreads || {}).filter(line => !this.isQuarterLine(line)).length, 0);
+      }
+      if (key === 'asian_handicap') {
+        return this.allEvents.reduce((sum, e) => sum + Object.keys(e.spreads || {}).filter(line => this.isQuarterLine(line)).length, 0);
+      }
+      if (key === 'totals_middle') {
+        return this.allEvents.filter(e => Object.keys(e.totals || {}).length >= 2).length;
+      }
+      return this.allEvents.reduce((sum, e) => sum + Object.keys(e[key] || {}).length, 0);
+    },
+
+    analyticsTotal(kind) {
+      const counts = this.analyticsCounts;
+      if (kind === 'surebet') return counts.h2h + counts.totals + counts.asian_handicap + counts.spreads;
+      if (kind === 'middle') return counts.middle;
+      if (kind === 'gap') return counts.gap;
+      return 0;
+    },
+
+    historyTypeLabel(rec) {
+      const key = rec.detail?.market_key || rec.detail?.dimension || 'h2h';
+      if (key === 'info_gap') return 'Information Gap';
+      if (key === 'totals_middle') return 'Middle Betting';
+      if (key === 'totals') return 'Surebet / Totals';
+      if (key === 'asian_handicap') return 'Surebet / AH';
+      if (key === 'spreads') return 'Surebet / Spreads';
+      return 'Surebet / H2H';
+    },
+
+    historyMetricText(rec) {
+      const key = rec.detail?.market_key || rec.detail?.dimension || 'h2h';
+      const value = Number(rec.profit_pct || 0).toFixed(3);
+      if (key === 'info_gap') return `Score: ${value}`;
+      if (key === 'totals_middle') return `Middle: +${value}%`;
+      return `Profit: +${value}%`;
+    },
+
+    historyMetricClass(rec) {
+      const key = rec.detail?.market_key || rec.detail?.dimension || 'h2h';
+      if (key === 'info_gap') return 'text-amber-300';
+      if (this.historyIsSuspicious(rec)) return 'text-red-300';
+      if (key === 'totals_middle') return 'text-fuchsia-300';
+      return 'text-green-400';
+    },
+
+    historyIsSuspicious(rec) {
+      const key = rec.detail?.market_key || rec.detail?.dimension || 'h2h';
+      return key !== 'info_gap' && Number(rec.profit_pct || 0) > 10;
+    },
+
+    isQuarterLine(line) {
+      const value = Math.abs(Number(line));
+      if (!Number.isFinite(value)) return false;
+      return value % 0.5 !== 0;
+    },
+
+    countMarket(key) {
+      const sure = (this.marketDimensions.surebets || []).filter(x => (x.market_key || x.dimension) === key).length;
+      const near = (this.marketDimensions.near || []).filter(x => (x.market_key || x.dimension) === key).length;
+      return sure + near;
+    },
+
+    connect() {
+      const wsUrl = `ws://${location.host}/ws`;
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onopen = () => { this.connected = true; };
+      this.ws.onclose = () => {
+        this.connected = false;
+        setTimeout(() => this.connect(), 5000);
+      };
+      this.ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        this.handleUpdate(data);
+      };
+    },
+
+    handleUpdate(data) {
+      if (data.type !== 'update') return;
+
+      const t = new Date(data.timestamp);
+      this.lastUpdate = t.toLocaleTimeString('zh-CN', {hour12: false});
+      this.regions = data.regions || {
+        au: {
+          key: 'au',
+          label: 'Australia',
+          currency: 'A$',
+          api_remaining: data.api_remaining,
+          total_events: data.total_events,
+          arbitrages: data.arbitrages || [],
+          arbitrages_raw: data.arbitrages_raw || [],
+          near_arb: data.near_arb || [],
+          info_gap: data.info_gap || [],
+          market_dimensions: data.market_dimensions || { surebets: [], near: [], summary: { surebet_count: 0, near_count: 0 } },
+          middles: data.middles || [],
+          filters: data.filters || null,
+          all_events: data.all_events || [],
+        }
+      };
+      this.signalTiming = data.signal_timing || this.signalTiming;
+      this.applyRegionData(this.regions[this.selectedRegion] || this.regions.au || {});
+
+      this.stats.scans++;
+      const executableSignals = [
+        ...this.arbitrages.map(a => this.signalFromH2h(a, 'arb')),
+        ...(this.marketDimensions.surebets || []).map(m => this.signalFromMarket(m, 'surebet')),
+        ...this.middles.map(m => this.signalFromMiddle(m)),
+      ];
+      this.stats.found += executableSignals.length;
+      const profitSignals = executableSignals.filter(s => s.strategy !== 'info_gap' && !s.isSuspicious);
+      if (profitSignals.length > 0) {
+        const maxP = Math.max(...profitSignals.map(a => a.profit_pct));
+        this.stats.maxProfit = Math.max(this.stats.maxProfit || 0, maxP);
+      }
+
+      // 新套利出现时提醒
+      if (this.arbitrages.length > this.prevArbCount && this.prevArbCount >= 0) {
+        this.alertNewArb();
+      }
+      this.prevArbCount = this.arbitrages.length;
+
+      // 更新选中的比赛/套利
+      if (this.selectedEvent) {
+        const updated = this.allEvents.find(e => e.id === this.selectedEvent.id);
+        if (updated) this.selectedEvent = updated;
+      }
+      if (this.selectedGap) {
+        const gap = this.infoGap.find(g => g.event_id === this.selectedGap.event_id);
+        if (gap) this.selectedGap = gap;
+      }
+    },
+
+    alertNewArb() {
+      document.title = '🎯 套利机会！ - WC2026 监控台';
+      setTimeout(() => { document.title = '⚽ WC2026 套利监控台'; }, 5000);
+    },
+
+    selectArb(arb) {
+      this.selectedArb = arb;
+      this.selectedOpportunity = null;
+      this.selectedGap = arb.info_gap || null;
+      const ev = this.allEvents.find(e => e.id === arb.event_id);
+      if (ev) this.selectedEvent = ev;
+      this.calcResult = this.computeFromArb(arb);
+    },
+
+    selectInfoGap(gap) {
+      this.selectedGap = gap;
+      this.selectedArb = null;
+      this.selectedOpportunity = null;
+      this.selectedSignalKey = null;
+      const ev = this.allEvents.find(e => e.id === gap.event_id);
+      if (ev) this.selectedEvent = ev;
+      this.recalcBets();
+    },
+
+    selectMarket(key) {
+      if (this.marketMenu.find(m => m.key === key)?.disabled) return;
+      this.selectedMarket = key;
+      this.selectedEvent = null;
+      this.selectedArb = null;
+      this.selectedOpportunity = null;
+      this.selectedGap = null;
+      this.selectedSignalKey = null;
+      this.calcResult = null;
+      this.selectFirstForMarket();
+    },
+
+    selectStrategy(key) {
+      if (this.strategyMenu.find(s => s.key === key)?.disabled) return;
+      this.selectedStrategy = key;
+      this.selectedEvent = null;
+      this.selectedArb = null;
+      this.selectedOpportunity = null;
+      this.selectedGap = null;
+      this.selectedSignalKey = null;
+      this.calcResult = null;
+      const first = this.selectedStrategySignals[0];
+      if (first) this.selectSignal(first);
+    },
+
+    selectFirstForMarket() {
+      const firstExec = this.selectedExecutableSignals[0];
+      if (firstExec) {
+        this.selectSignal(firstExec);
+        return;
+      }
+      const firstNear = this.selectedNearSignals[0];
+      if (firstNear) {
+        this.selectSignal(firstNear);
+        return;
+      }
+      const ev = this.allEvents.find(e => this.eventHasMarketData(e, this.selectedMarket));
+      if (ev) this.selectEvent(ev);
+    },
+
+    selectSignal(sig) {
+      this.selectedSignalKey = sig.key;
+      if (sig.type === 'h2h' && sig.kind === 'arb') {
+        this.selectedMarket = 'h2h';
+        this.selectArb(sig.raw);
+        this.selectedSignalKey = sig.key;
+        return;
+      }
+      if (sig.type === 'h2h' && sig.kind === 'near') {
+        this.selectedMarket = 'h2h';
+        this.selectEventById(sig.raw.event_id);
+        this.selectedSignalKey = sig.key;
+        return;
+      }
+      if (sig.type === 'market') {
+        this.selectedMarket = this.marketKey(sig.raw);
+        this.selectDimension(sig.raw);
+        this.selectedSignalKey = sig.key;
+        return;
+      }
+      if (sig.type === 'middle') {
+        this.selectedMarket = 'totals_middle';
+        this.selectMiddle(sig.raw);
+        this.selectedSignalKey = sig.key;
+        return;
+      }
+      if (sig.type === 'info_gap') {
+        this.selectedMarket = 'h2h';
+        this.selectInfoGap(sig.raw);
+        this.selectedSignalKey = sig.key;
+      }
+    },
+
+    selectDimension(dim) {
+      const ev = this.allEvents.find(e => e.id === dim.event_id);
+      if (!ev) return;
+      this.selectedEvent = ev;
+      this.selectedArb = null;
+      this.selectedOpportunity = dim;
+      this.selectedGap = this.infoGap.find(g => g.event_id === ev.id) || null;
+      this.selectedSignalKey = null;
+      this.calcResult = this.computeFromOpportunity(dim);
+    },
+
+    selectMiddle(middle) {
+      const ev = this.allEvents.find(e => e.id === middle.event_id);
+      if (ev) this.selectedEvent = ev;
+      this.selectedArb = null;
+      this.selectedOpportunity = middle;
+      this.selectedGap = ev ? (this.infoGap.find(g => g.event_id === ev.id) || null) : null;
+      this.selectedSignalKey = null;
+      this.calcResult = this.computeFromMiddle(middle);
+    },
+
+    selectEvent(ev) {
+      this.selectedEvent = ev;
+      this.selectedArb = null;
+      this.selectedOpportunity = null;
+      this.selectedGap = this.infoGap.find(g => g.event_id === ev.id) || null;
+      this.selectedSignalKey = null;
+      this.recalcBets();
+    },
+
+    selectEventById(eventId) {
+      const ev = this.allEvents.find(e => e.id === eventId);
+      if (ev) this.selectEvent(ev);
+    },
+
+    eventHasMarketData(event, key) {
+      if (!event) return false;
+      if (key === 'h2h') return Object.keys(event.bookmakers || {}).length > 0;
+      if (key === 'totals') return Object.keys(event.totals || {}).length > 0;
+      if (key === 'spreads') return Object.keys(event.spreads || {}).some(line => !this.isQuarterLine(line));
+      if (key === 'asian_handicap') return Object.keys(event.spreads || {}).some(line => this.isQuarterLine(line));
+      if (key === 'totals_middle') return Object.keys(event.totals || {}).length >= 2;
+      return Object.keys(event[key] || {}).length > 0;
+    },
+
+    sideLabel(side) {
+      const labels = {
+        en: { home: 'Home', draw: 'Draw', away: 'Away' },
+        zh: { home: '主队赢', draw: '平局', away: '客队赢' },
+      };
+      return labels[this.lang]?.[side] || labels.en[side] || '-';
+    },
+
+    marketLabel(market) {
+      const key = market.dimension || market.market_key;
+      return ({
+        totals: this.marketName('totals'),
+        spreads: this.marketName('spreads'),
+        asian_handicap: this.marketName('asian_handicap'),
+        btts: this.marketName('btts'),
+        draw_no_bet: this.marketName('draw_no_bet'),
+        double_chance: this.marketName('double_chance'),
+        totals_middle: this.marketName('totals_middle'),
+      }[key] || market.market_label || key || '-');
+    },
+
+    computeFromArb(arb) {
+      const scale = this.totalStake / 1000;
+      return {
+        guaranteed: arb.guaranteed_return * scale,
+        net: arb.net_profit * scale,
+        pct: arb.profit_pct,
+        bets: {
+          home: { ...arb.bets.home, stake: arb.bets.home.stake * scale },
+          draw: { ...arb.bets.draw, stake: arb.bets.draw.stake * scale },
+          away: { ...arb.bets.away, stake: arb.bets.away.stake * scale },
+        }
+      };
+    },
+
+    computeFromOpportunity(opp) {
+      const scale = this.totalStake / (opp.total_stake || 1000);
+      return {
+        guaranteed: (opp.guaranteed_return || 0) * scale,
+        net: (opp.net_profit || 0) * scale,
+        pct: opp.profit_pct || 0,
+        bets: (opp.bets || []).map(bet => ({ ...bet, stake: bet.stake * scale })),
+      };
+    },
+
+    computeFromMiddle(middle) {
+      const scale = this.totalStake / (middle.total_stake || 1000);
+      return {
+        guaranteed: this.totalStake + middle.outside_net * scale,
+        net: middle.outside_net * scale,
+        pct: -middle.outside_loss_pct,
+        bets: middle.legs.map(leg => ({ ...leg, stake: leg.stake * scale })),
+      };
+    },
+
+    recalcBets() {
+      if (this.selectedArb) {
+        this.calcResult = this.computeFromArb(this.selectedArb);
+        return;
+      }
+      if (this.selectedOpportunity) {
+        this.calcResult = this.selectedOpportunity.market_key === 'totals_middle'
+          ? this.computeFromMiddle(this.selectedOpportunity)
+          : this.computeFromOpportunity(this.selectedOpportunity);
+        return;
+      }
+      if (!this.selectedEvent) { this.calcResult = null; return; }
+      const b = this.bestOdds;
+      if (!b.home || !b.draw || !b.away || this.bestMargin >= 1) {
+        this.calcResult = null; return;
+      }
+      const margin = this.bestMargin;
+      const stake = this.totalStake;
+      const bms = this.selectedEvent.bookmakers || {};
+      const getBM = (type) => {
+        let best = 0, bmName = '';
+        for (const [bm, o] of Object.entries(bms)) {
+          if (o[type] > best) { best = o[type]; bmName = bm; }
+        }
+        return bmName;
+      };
+      const sh = stake * (1/b.home) / margin;
+      const sd = stake * (1/b.draw) / margin;
+      const sa = stake * (1/b.away) / margin;
+      this.calcResult = {
+        guaranteed: stake / margin,
+        net: stake / margin - stake,
+        pct: (1/margin - 1) * 100,
+        bets: {
+          home: { stake: sh, odds: b.home, bookmaker: getBM('home') },
+          draw: { stake: sd, odds: b.draw, bookmaker: getBM('draw') },
+          away: { stake: sa, odds: b.away, bookmaker: getBM('away') },
+        }
+      };
+    },
+
+    formatTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+    },
+
+    async loadHistory() {
+      try {
+        const r = await fetch('/api/history?limit=0');
+        this.history = await r.json();
+      } catch(e) {}
+    },
+
+    exportCSV() {
+      if (!this.history.length) return;
+      const header = 'id,detected_at,match,profit_pct,margin,commence\n';
+      const rows = this.history.map(r =>
+        `${r.id},"${r.detected_at}","${r.match}",${r.profit_pct.toFixed(4)},${r.margin.toFixed(5)},"${r.commence}"`
+      ).join('\n');
+      const blob = new Blob([header + rows], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `arb_history_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    },
+  };
+}
+</script>
+</body>
+</html>

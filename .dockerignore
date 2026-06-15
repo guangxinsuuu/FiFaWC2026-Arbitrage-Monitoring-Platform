@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.Python
+.env
+.git/
+.DS_Store
+data/*.db
+data/latest_*.json
+*.log
+*.pem
+*.tar.gz

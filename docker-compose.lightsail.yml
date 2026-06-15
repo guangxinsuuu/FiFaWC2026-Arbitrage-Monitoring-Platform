@@ -1,0 +1,31 @@
+services:
+  app:
+    build: .
+    container_name: wc2026-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8000"
+    volumes:
+      - ./data:/app/data
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: wc2026-caddy
+    restart: unless-stopped
+    depends_on:
+      - app
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/lightsail/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
