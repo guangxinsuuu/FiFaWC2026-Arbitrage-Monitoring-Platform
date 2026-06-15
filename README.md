@@ -10,7 +10,7 @@ Built as a free, community-supported analytics platform.
 
 ## Dashboard Preview
 
-![WC2026 Arbitrage Console dashboard preview](docs/assets/dashboard-preview.png)
+![WC2026 Arbitrage Console dashboard preview](dashboard.png)
 
 ## Product Overview
 
@@ -25,28 +25,6 @@ WC2026 Arbitrage Console turns that fragmented data into an operator-style dashb
 - **Product analytics** showing which modules are actually producing value over today, 7 days, and all-time history
 
 It is closer to a market monitoring console than a gambling tips site.
-
-## System Architecture
-
-```mermaid
-flowchart LR
-    A[The Odds API<br/>World Cup odds] --> B[Polling Scheduler<br/>Configurable refresh]
-    B --> C[Normalization Layer<br/>Bookmakers, markets, regions]
-    C --> D[Opportunity Engine]
-
-    D --> D1[Surebet Scanner<br/>H2H, Totals, Spreads, AH]
-    D --> D2[Near-Arbitrage Scanner]
-    D --> D3[Middle Betting Scanner]
-    D --> D4[Information Gap Detection]
-    D --> D5[Risk & Timing Engine]
-
-    D --> E[(SQLite<br/>Snapshots & history)]
-    D --> F[FastAPI Backend]
-    F --> G[WebSocket Stream]
-    G --> H[Dark Dashboard<br/>Strategy Scanner, Analytics, Execution Plan]
-
-    F --> I[REST API<br/>History, config, exports]
-```
 
 ## Core Capabilities
 
@@ -97,22 +75,6 @@ The stack is intentionally simple, deployable, and infrastructure-friendly:
 - **The Odds API** as the live market data source
 
 ## Cloud Deployment Model
-
-The project is designed to run as a compact single-service deployment:
-
-```mermaid
-flowchart TB
-    U[User Browser] --> C[Caddy / HTTPS Reverse Proxy]
-    C --> A[FastAPI App Container]
-    A --> S[(Persistent data volume<br/>SQLite + snapshots)]
-    A --> O[The Odds API]
-
-    subgraph AWS Lightsail Instance
-        C
-        A
-        S
-    end
-```
 
 For production-style hosting, the included Lightsail setup uses:
 
@@ -204,7 +166,3 @@ https://buymeacoffee.com/neilsuuu
 Advisory analytics only. Signals are decision-support outputs, not betting instructions or guarantees. Users remain solely responsible for execution, compliance, account eligibility, limits, and final outcomes.
 
 Market data is sourced in real time through configured authorized odds API integrations.
-
-## License
-
-No license has been selected yet.
